@@ -1,37 +1,54 @@
-import OpenAI from "openai"
+import type { VercelRequest, VercelResponse } from "@vercel/node";
+import OpenAI from "openai";
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-})
-
-export default async function handler(req, res) {
+export default async function handler(
+  req: VercelRequest,
+  res: VercelResponse
+) {
+  // 1️⃣ Allow only POST
   if (req.method !== "POST") {
-    return res.status(405).json({ error: "Only POST allowed" })
+    return res.status(200).json({ error: "Only POST allowed" });
   }
 
   try {
-    const { messages } = req.body
+    // 2️⃣ Safety check for API key
+    if (!process.env.OPENAI_API_KEY) {
+      return res.status(500).json({ error: "Missing OpenAI API key" });
+    }
 
-    const response = await openai.chat.completions.create({
+    // 3️⃣ Validate input
+    const { message } = req.body || {};
+    if (!message) {
+      return res.status(400).json({ error: "No message provided" });
+    }
+
+    // 4️⃣ Create OpenAI client
+    const client = new OpenAI({
+      apiKey: process.env.OPENAI_API_KEY,
+    });
+
+    // 5️⃣ Call OpenAI
+    const completion = await client.chat.completions.create({
       model: "gpt-4o-mini",
       messages: [
         {
           role: "system",
-          content: `
-You are mycarAi, an automotive expert assistant.
-Explain car repairs clearly to non-technical drivers.
-Help users avoid unnecessary repairs and save money.
-`
+          content:
+            "You are mycarAi, an automotive assistant that helps drivers understand repairs and avoid unnecessary work.",
         },
-        ...messages
-      ]
-    })
+        {
+          role: "user",
+          content: message,
+        },
+      ],
+    });
 
-    res.status(200).json({
-      reply: response.choices[0].message.content
-    })
-  } catch (error) {
-    console.error(error)
-    res.status(500).json({ error: "OpenAI request failed" })
+    // 6️⃣ Send response
+    return res.status(200).json({
+      reply: completion.choices[0].message.content,
+    });
+  } catch (error: any) {
+    console.error("Chat API error:", error);
+    return res.status(500).json({ error: "Server error" });
   }
 }
